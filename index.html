@@ -26,6 +26,7 @@
             overflow: hidden;
             cursor: grab;
             background: #111;
+            touch-action: none;
         }
 
         #viewer.dragging {
@@ -40,6 +41,7 @@
             user-select: none;
             pointer-events: none;
             transform-origin: center center;
+            will-change: transform;
         }
 
         #controls {
@@ -126,14 +128,18 @@
         const zoomLevel = document.getElementById("zoomLevel");
 
         let scale = 1;
-
+        let targetScale = 1;
         let offsetX = 0;
         let offsetY = 0;
-
+        let targetOffsetX = 0;
+        let targetOffsetY = 0;
         let dragging = false;
-
-        let startX = 0;
-        let startY = 0;
+        let pointerId = null;
+        let lastX = 0;
+        let lastY = 0;
+        let velocityX = 0;
+        let velocityY = 0;
+        let animationFrame = null;
 
         function updateImage() {
             image.style.transform =
@@ -142,29 +148,64 @@
             zoomLevel.textContent = Math.round(scale * 100) + "%";
         }
 
+        function animate() {
+            const scaleDifference = targetScale - scale;
+            const offsetDifferenceX = targetOffsetX - offsetX;
+            const offsetDifferenceY = targetOffsetY - offsetY;
+
+            scale += scaleDifference * 0.2;
+            offsetX += offsetDifferenceX * 0.2 + velocityX;
+            offsetY += offsetDifferenceY * 0.2 + velocityY;
+            velocityX *= 0.86;
+            velocityY *= 0.86;
+
+            updateImage();
+
+            const stillMoving = Math.abs(scaleDifference) > 0.001 ||
+                Math.abs(offsetDifferenceX) > 0.1 ||
+                Math.abs(offsetDifferenceY) > 0.1 ||
+                Math.abs(velocityX) > 0.1 ||
+                Math.abs(velocityY) > 0.1;
+
+            if (stillMoving) {
+                animationFrame = requestAnimationFrame(animate);
+            } else {
+                scale = targetScale;
+                offsetX = targetOffsetX;
+                offsetY = targetOffsetY;
+                velocityX = 0;
+                velocityY = 0;
+                animationFrame = null;
+                updateImage();
+            }
+        }
+
+        function startAnimation() {
+            if (animationFrame === null) {
+                animationFrame = requestAnimationFrame(animate);
+            }
+        }
+
         function zoom(factor, mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2) {
-            const oldScale = scale;
-
-            scale = Math.max(0.05, Math.min(oldScale * factor, 20));
-
-            // Keep the point underneath the mouse stationary while zooming
+            const oldScale = targetScale;
+            const newScale = Math.max(0.05, Math.min(oldScale * factor, 20));
             const rect = viewer.getBoundingClientRect();
-
             const centerX = mouseX - rect.left - rect.width / 2;
             const centerY = mouseY - rect.top - rect.height / 2;
 
-            offsetX += centerX * (1 / oldScale - 1 / scale);
-            offsetY += centerY * (1 / oldScale - 1 / scale);
-
-            updateImage();
+            // Keep the exact image point under the cursor fixed while scaling.
+            const scaleRatio = 1 - newScale / oldScale;
+            targetOffsetX += (centerX - targetOffsetX) * scaleRatio;
+            targetOffsetY += (centerY - targetOffsetY) * scaleRatio;
+            targetScale = newScale;
+            startAnimation();
         }
 
         function resetView() {
-            scale = 1;
-            offsetX = 0;
-            offsetY = 0;
-
-            updateImage();
+            targetScale = 1;
+            targetOffsetX = 0;
+            targetOffsetY = 0;
+            startAnimation();
         }
 
         // Zoom buttons
@@ -188,31 +229,48 @@
         }, { passive: false });
 
         // Start dragging
-        viewer.addEventListener("mousedown", function (event) {
+        viewer.addEventListener("pointerdown", function (event) {
             if (event.button !== 0) return;
-
             dragging = true;
-
-            startX = event.clientX - offsetX;
-            startY = event.clientY - offsetY;
-
+            pointerId = event.pointerId;
+            lastX = event.clientX;
+            lastY = event.clientY;
+            velocityX = 0;
+            velocityY = 0;
+            viewer.setPointerCapture(pointerId);
             viewer.classList.add("dragging");
         });
 
-        // Drag image
-        window.addEventListener("mousemove", function (event) {
-            if (!dragging) return;
+        viewer.addEventListener("pointermove", function (event) {
+            if (!dragging || event.pointerId !== pointerId) return;
 
-            offsetX = event.clientX - startX;
-            offsetY = event.clientY - startY;
-
+            const movementX = event.clientX - lastX;
+            const movementY = event.clientY - lastY;
+            offsetX += movementX;
+            offsetY += movementY;
+            targetOffsetX = offsetX;
+            targetOffsetY = offsetY;
+            velocityX = movementX;
+            velocityY = movementY;
+            lastX = event.clientX;
+            lastY = event.clientY;
             updateImage();
         });
 
-        // Stop dragging
-        window.addEventListener("mouseup", function () {
+        viewer.addEventListener("pointerup", function (event) {
+            if (event.pointerId !== pointerId) return;
             dragging = false;
+            viewer.releasePointerCapture(pointerId);
+            pointerId = null;
             viewer.classList.remove("dragging");
+            startAnimation();
+        });
+
+        viewer.addEventListener("pointercancel", function () {
+            dragging = false;
+            pointerId = null;
+            viewer.classList.remove("dragging");
+            startAnimation();
         });
 
         // Keyboard controls
