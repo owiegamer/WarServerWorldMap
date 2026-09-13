@@ -1,10 +1,9 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Viewer</title>
+    <title>War Server World Map</title>
 
     <style>
         * {
@@ -60,8 +59,7 @@
             backdrop-filter: blur(5px);
         }
 
-        button,
-        label {
+        button {
             border: none;
             background: #333;
             color: white;
@@ -71,36 +69,14 @@
             font-size: 14px;
         }
 
-        button:hover,
-        label:hover {
+        button:hover {
             background: #555;
-        }
-
-        input[type="file"] {
-            display: none;
         }
 
         #zoomLevel {
             min-width: 55px;
             text-align: center;
             font-size: 14px;
-        }
-
-        #dropMessage {
-            position: fixed;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-
-            text-align: center;
-            color: #aaa;
-            font-size: 20px;
-
-            pointer-events: none;
-        }
-
-        #dropMessage.hidden {
-            display: none;
         }
 
         #info {
@@ -126,9 +102,6 @@
     </div>
 
     <div id="controls">
-        <label for="fileInput">📂 Open Image</label>
-        <input id="fileInput" type="file" accept="image/*">
-
         <button id="zoomOut">−</button>
 
         <span id="zoomLevel">100%</span>
@@ -138,10 +111,6 @@
         <button id="reset">↻ Reset</button>
     </div>
 
-    <div id="dropMessage">
-        Open an image or drag one here
-    </div>
-
     <div id="info">
         Scroll = Zoom &nbsp; | &nbsp; Drag = Pan
     </div>
@@ -149,14 +118,12 @@
     <script>
         const viewer = document.getElementById("viewer");
         const image = document.getElementById("image");
-        const fileInput = document.getElementById("fileInput");
 
         const zoomInButton = document.getElementById("zoomIn");
         const zoomOutButton = document.getElementById("zoomOut");
         const resetButton = document.getElementById("reset");
 
         const zoomLevel = document.getElementById("zoomLevel");
-        const dropMessage = document.getElementById("dropMessage");
 
         let scale = 1;
 
@@ -175,12 +142,10 @@
             zoomLevel.textContent = Math.round(scale * 100) + "%";
         }
 
-        function zoom(amount, mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2) {
+        function zoom(factor, mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2) {
             const oldScale = scale;
 
-            scale += amount;
-
-            scale = Math.max(0.05, Math.min(scale, 20));
+            scale = Math.max(0.05, Math.min(oldScale * factor, 20));
 
             // Keep the point underneath the mouse stationary while zooming
             const rect = viewer.getBoundingClientRect();
@@ -188,8 +153,8 @@
             const centerX = mouseX - rect.left - rect.width / 2;
             const centerY = mouseY - rect.top - rect.height / 2;
 
-            offsetX -= centerX * (scale / oldScale - 1);
-            offsetY -= centerY * (scale / oldScale - 1);
+            offsetX += centerX * (1 / oldScale - 1 / scale);
+            offsetY += centerY * (1 / oldScale - 1 / scale);
 
             updateImage();
         }
@@ -202,40 +167,13 @@
             updateImage();
         }
 
-        // Open image
-        fileInput.addEventListener("change", function () {
-            const file = this.files[0];
-
-            if (!file) return;
-
-            loadImage(file);
-        });
-
-        function loadImage(file) {
-            if (!file.type.startsWith("image/")) {
-                alert("Please select an image.");
-                return;
-            }
-
-            const url = URL.createObjectURL(file);
-
-            image.onload = function () {
-                resetView();
-                dropMessage.classList.add("hidden");
-
-                URL.revokeObjectURL(url);
-            };
-
-            image.src = url;
-        }
-
         // Zoom buttons
         zoomInButton.addEventListener("click", () => {
-            zoom(0.25);
+            zoom(1.25);
         });
 
         zoomOutButton.addEventListener("click", () => {
-            zoom(-0.25);
+            zoom(0.8);
         });
 
         resetButton.addEventListener("click", resetView);
@@ -244,9 +182,9 @@
         viewer.addEventListener("wheel", function (event) {
             event.preventDefault();
 
-            const amount = event.deltaY < 0 ? 0.15 : -0.15;
+            const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
 
-            zoom(amount, event.clientX, event.clientY);
+            zoom(factor, event.clientX, event.clientY);
         }, { passive: false });
 
         // Start dragging
@@ -277,41 +215,23 @@
             viewer.classList.remove("dragging");
         });
 
-        // Drag and drop
-        viewer.addEventListener("dragover", function (event) {
-            event.preventDefault();
-        });
-
-        viewer.addEventListener("drop", function (event) {
-            event.preventDefault();
-
-            const file = event.dataTransfer.files[0];
-
-            if (file) {
-                loadImage(file);
-            }
-        });
-
         // Keyboard controls
         window.addEventListener("keydown", function (event) {
 
             if (event.key === "+" || event.key === "=") {
-                zoom(0.25);
+                zoom(1.25);
             }
 
             if (event.key === "-" || event.key === "_") {
-                zoom(-0.25);
+                zoom(0.8);
             }
 
             if (event.key === "0") {
                 resetView();
             }
         });
-
         updateImage();
-        dropMessage.classList.add("hidden");
     </script>
 
 </body>
 </html>
-```
