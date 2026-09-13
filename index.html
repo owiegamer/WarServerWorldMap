@@ -1,0 +1,316 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: white;
+        }
+
+        #viewer {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            cursor: grab;
+            background: #111;
+        }
+
+        #viewer.dragging {
+            cursor: grabbing;
+        }
+
+        #image {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            max-width: none;
+            user-select: none;
+            pointer-events: none;
+            transform-origin: center center;
+        }
+
+        #controls {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            z-index: 10;
+
+            display: flex;
+            gap: 8px;
+            align-items: center;
+
+            padding: 10px;
+
+            background: rgba(0, 0, 0, 0.75);
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+
+        button,
+        label {
+            border: none;
+            background: #333;
+            color: white;
+            padding: 9px 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover,
+        label:hover {
+            background: #555;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        #zoomLevel {
+            min-width: 55px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        #dropMessage {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+
+            text-align: center;
+            color: #aaa;
+            font-size: 20px;
+
+            pointer-events: none;
+        }
+
+        #dropMessage.hidden {
+            display: none;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+
+            padding: 8px 12px;
+
+            background: rgba(0, 0, 0, 0.65);
+            border-radius: 6px;
+
+            color: #aaa;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="viewer">
+        <img id="image" src="" alt="Image">
+    </div>
+
+    <div id="controls">
+        <label for="fileInput">📂 Open Image</label>
+        <input id="fileInput" type="file" accept="image/*">
+
+        <button id="zoomOut">−</button>
+
+        <span id="zoomLevel">100%</span>
+
+        <button id="zoomIn">+</button>
+
+        <button id="reset">↻ Reset</button>
+    </div>
+
+    <div id="dropMessage">
+        Open an image or drag one here
+    </div>
+
+    <div id="info">
+        Scroll = Zoom &nbsp; | &nbsp; Drag = Pan
+    </div>
+
+    <script>
+        const viewer = document.getElementById("viewer");
+        const image = document.getElementById("image");
+        const fileInput = document.getElementById("fileInput");
+
+        const zoomInButton = document.getElementById("zoomIn");
+        const zoomOutButton = document.getElementById("zoomOut");
+        const resetButton = document.getElementById("reset");
+
+        const zoomLevel = document.getElementById("zoomLevel");
+        const dropMessage = document.getElementById("dropMessage");
+
+        let scale = 1;
+
+        let offsetX = 0;
+        let offsetY = 0;
+
+        let dragging = false;
+
+        let startX = 0;
+        let startY = 0;
+
+        function updateImage() {
+            image.style.transform =
+                `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+
+            zoomLevel.textContent = Math.round(scale * 100) + "%";
+        }
+
+        function zoom(amount, mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2) {
+            const oldScale = scale;
+
+            scale += amount;
+
+            scale = Math.max(0.05, Math.min(scale, 20));
+
+            // Keep the point underneath the mouse stationary while zooming
+            const rect = viewer.getBoundingClientRect();
+
+            const centerX = mouseX - rect.left - rect.width / 2;
+            const centerY = mouseY - rect.top - rect.height / 2;
+
+            offsetX -= centerX * (scale / oldScale - 1);
+            offsetY -= centerY * (scale / oldScale - 1);
+
+            updateImage();
+        }
+
+        function resetView() {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+
+            updateImage();
+        }
+
+        // Open image
+        fileInput.addEventListener("change", function () {
+            const file = this.files[0];
+
+            if (!file) return;
+
+            loadImage(file);
+        });
+
+        function loadImage(file) {
+            if (!file.type.startsWith("image/")) {
+                alert("Please select an image.");
+                return;
+            }
+
+            const url = URL.createObjectURL(file);
+
+            image.onload = function () {
+                resetView();
+                dropMessage.classList.add("hidden");
+
+                URL.revokeObjectURL(url);
+            };
+
+            image.src = url;
+        }
+
+        // Zoom buttons
+        zoomInButton.addEventListener("click", () => {
+            zoom(0.25);
+        });
+
+        zoomOutButton.addEventListener("click", () => {
+            zoom(-0.25);
+        });
+
+        resetButton.addEventListener("click", resetView);
+
+        // Mouse wheel zoom
+        viewer.addEventListener("wheel", function (event) {
+            event.preventDefault();
+
+            const amount = event.deltaY < 0 ? 0.15 : -0.15;
+
+            zoom(amount, event.clientX, event.clientY);
+        }, { passive: false });
+
+        // Start dragging
+        viewer.addEventListener("mousedown", function (event) {
+            if (event.button !== 0) return;
+
+            dragging = true;
+
+            startX = event.clientX - offsetX;
+            startY = event.clientY - offsetY;
+
+            viewer.classList.add("dragging");
+        });
+
+        // Drag image
+        window.addEventListener("mousemove", function (event) {
+            if (!dragging) return;
+
+            offsetX = event.clientX - startX;
+            offsetY = event.clientY - startY;
+
+            updateImage();
+        });
+
+        // Stop dragging
+        window.addEventListener("mouseup", function () {
+            dragging = false;
+            viewer.classList.remove("dragging");
+        });
+
+        // Drag and drop
+        viewer.addEventListener("dragover", function (event) {
+            event.preventDefault();
+        });
+
+        viewer.addEventListener("drop", function (event) {
+            event.preventDefault();
+
+            const file = event.dataTransfer.files[0];
+
+            if (file) {
+                loadImage(file);
+            }
+        });
+
+        // Keyboard controls
+        window.addEventListener("keydown", function (event) {
+
+            if (event.key === "+" || event.key === "=") {
+                zoom(0.25);
+            }
+
+            if (event.key === "-" || event.key === "_") {
+                zoom(-0.25);
+            }
+
+            if (event.key === "0") {
+                resetView();
+            }
+        });
+
+        updateImage();
+    </script>
+
+</body>
+</html>
+```
