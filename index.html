@@ -95,6 +95,10 @@
             font-size: 13px;
         }
 
+        #phoneInfo {
+            display: none;
+        }
+
         #news {
             position: fixed;
             top: 15px;
@@ -156,6 +160,27 @@
                 padding: 10px 12px;
             }
 
+            #info {
+                display: none;
+            }
+
+            #phoneInfo {
+                display: block;
+                position: fixed;
+                bottom: calc(15px + env(safe-area-inset-bottom));
+                left: 50%;
+                z-index: 5;
+                transform: translateX(-50%);
+                width: max-content;
+                max-width: calc(100vw - 30px);
+                padding: 8px 12px;
+                border-radius: 6px;
+                background: rgba(0, 0, 0, 0.65);
+                color: #aaa;
+                font-size: 13px;
+                text-align: center;
+            }
+
             #news {
                 top: 10px;
                 right: 10px;
@@ -206,6 +231,10 @@
         Scroll = Zoom &nbsp; | &nbsp; Drag = Pan
     </div>
 
+    <div id="phoneInfo">
+        One finger = Move &nbsp; | &nbsp; Two fingers = Zoom
+    </div>
+
     <button id="newsToggle" type="button" aria-controls="news" aria-expanded="true" aria-label="Hide news">
         →
     </button>
@@ -246,9 +275,23 @@
         let pointerId = null;
         let lastX = 0;
         let lastY = 0;
+        const activePointers = new Map();
+        let pinchStartDistance = 0;
+        let pinchStartScale = 1;
+        let pinchStartOffsetX = 0;
+        let pinchStartOffsetY = 0;
         let velocityX = 0;
         let velocityY = 0;
         let animationFrame = null;
+
+        function updateDeviceMode() {
+            const isPhone = window.matchMedia("(max-width: 600px), (pointer: coarse)").matches ||
+                /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            document.body.classList.toggle("phone", isPhone);
+        }
+
+        updateDeviceMode();
+        window.addEventListener("resize", updateDeviceMode);
 
         function updateImage() {
             image.style.transform =
@@ -340,17 +383,54 @@
         // Start dragging
         viewer.addEventListener("pointerdown", function (event) {
             if (event.button !== 0) return;
-            dragging = true;
-            pointerId = event.pointerId;
-            lastX = event.clientX;
-            lastY = event.clientY;
+            activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
             velocityX = 0;
             velocityY = 0;
-            viewer.setPointerCapture(pointerId);
+            viewer.setPointerCapture(event.pointerId);
             viewer.classList.add("dragging");
+
+            if (activePointers.size === 1) {
+                dragging = true;
+                pointerId = event.pointerId;
+                lastX = event.clientX;
+                lastY = event.clientY;
+            } else if (activePointers.size === 2) {
+                dragging = false;
+                const pointers = [...activePointers.values()];
+                pinchStartDistance = Math.hypot(
+                    pointers[1].x - pointers[0].x,
+                    pointers[1].y - pointers[0].y
+                );
+                pinchStartScale = targetScale;
+                pinchStartOffsetX = targetOffsetX;
+                pinchStartOffsetY = targetOffsetY;
+            }
         });
 
         viewer.addEventListener("pointermove", function (event) {
+            if (!activePointers.has(event.pointerId)) return;
+            activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+            if (activePointers.size === 2) {
+                const pointers = [...activePointers.values()];
+                const distance = Math.hypot(
+                    pointers[1].x - pointers[0].x,
+                    pointers[1].y - pointers[0].y
+                );
+                const rect = viewer.getBoundingClientRect();
+                const centerX = (pointers[0].x + pointers[1].x) / 2 - rect.left - rect.width / 2;
+                const centerY = (pointers[0].y + pointers[1].y) / 2 - rect.top - rect.height / 2;
+                const ratio = distance / pinchStartDistance;
+                const newScale = Math.max(0.05, Math.min(pinchStartScale * ratio, 20));
+                targetScale = newScale;
+                targetOffsetX = pinchStartOffsetX +
+                    (centerX - pinchStartOffsetX) * (1 - newScale / pinchStartScale);
+                targetOffsetY = pinchStartOffsetY +
+                    (centerY - pinchStartOffsetY) * (1 - newScale / pinchStartScale);
+                startAnimation();
+                return;
+            }
+
             if (!dragging || event.pointerId !== pointerId) return;
 
             const movementX = event.clientX - lastX;
@@ -367,15 +447,25 @@
         });
 
         viewer.addEventListener("pointerup", function (event) {
-            if (event.pointerId !== pointerId) return;
-            dragging = false;
-            viewer.releasePointerCapture(pointerId);
-            pointerId = null;
-            viewer.classList.remove("dragging");
-            startAnimation();
+            activePointers.delete(event.pointerId);
+            viewer.releasePointerCapture(event.pointerId);
+
+            if (activePointers.size === 1) {
+                const remaining = [...activePointers.entries()][0];
+                pointerId = remaining[0];
+                lastX = remaining[1].x;
+                lastY = remaining[1].y;
+                dragging = true;
+            } else {
+                dragging = false;
+                pointerId = null;
+                viewer.classList.remove("dragging");
+                startAnimation();
+            }
         });
 
-        viewer.addEventListener("pointercancel", function () {
+        viewer.addEventListener("pointercancel", function (event) {
+            activePointers.delete(event.pointerId);
             dragging = false;
             pointerId = null;
             viewer.classList.remove("dragging");
