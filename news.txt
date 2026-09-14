@@ -1,0 +1,4 @@
+Welcome to the War Server World Map.
+
+Add the latest server updates, events, and announcements to this file.
+Changes will appear here when the page is refreshed.
