@@ -1,5 +1,6 @@
 Welcome to the War Server World Map.
 
 IP: ivan-cp.tun.ply.gg
+AutoModPack Code: 6aaad83ec1096282c7744712f2533b6a7bf6fb4f1820dd98246ddd2289902515
 
 Nothing is really happening rn.
